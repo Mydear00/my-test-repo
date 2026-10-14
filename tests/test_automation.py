@@ -9,7 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 
 BASE_URL = "https://automationexercise.com"
-WAIT_TIME = 30
+WAIT_TIME = 10
 
 
 # =====================================================
