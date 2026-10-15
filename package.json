@@ -1,0 +1,30 @@
+{
+  "name": "my-test-repo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "cy:open": "cypress open",
+    "cy:run": "cypress run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mydear00/my-test-repo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Mydear00/my-test-repo/issues"
+  },
+  "homepage": "https://github.com/Mydear00/my-test-repo#readme",
+  "devDependencies": {
+    "cypress": "^16.2.0",
+    "install": "^0.13.0"
+  }
+}

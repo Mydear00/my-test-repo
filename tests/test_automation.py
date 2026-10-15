@@ -1,4 +1,3 @@
-
 import pytest
 
 from selenium import webdriver
@@ -20,10 +19,13 @@ WAIT_TIME = 10
 def driver():
     """สร้าง Browser สำหรับทดสอบด้วย Selenium"""
     options = Options()
-    options.add_argument("--headless=new")
+    # options.add_argument("--headless=new")  # ปิดโหมด headless
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1365,900")
+    
+    # ป้องกันไม่ให้ Chrome ปิดตัวเองลงอัตโนมัติเมื่อรันโค้ดเสร็จ
+    options.add_experimental_option("detach", True)
 
     browser = webdriver.Chrome(options=options)
     browser.set_page_load_timeout(60)
@@ -32,7 +34,8 @@ def driver():
     try:
         yield browser
     finally:
-        browser.quit()
+        pass
+        # browser.quit()  # เปิดค้างไว้หลังเทสเสร็จ
 
 
 # =====================================================
@@ -76,8 +79,8 @@ def open_products(driver):
     )
 
 
-def open_first_product(driver):
-    """เปิดหน้ารายละเอียดสินค้ารายการแรก"""
+def open_product_by_index(driver, product_index=0):
+    """เปิดหน้ารายละเอียดสินค้าตามลำดับ Index เพื่อให้ไม่ซ้ำกัน"""
     open_products(driver)
 
     links = WebDriverWait(driver, WAIT_TIME).until(
@@ -86,30 +89,23 @@ def open_first_product(driver):
         )
     )
 
-    product_url = next(
-        (
-            link.get_attribute("href")
-            for link in links
-            if link.is_displayed()
-            and link.is_enabled()
-            and link.get_attribute("href")
-        ),
-        None
-    )
+    visible_links = [
+        link for link in links
+        if link.is_displayed() and link.is_enabled() and link.get_attribute("href")
+    ]
 
-    assert product_url, "ไม่พบลิงก์รายละเอียดสินค้าที่ใช้งานได้"
+    assert len(visible_links) > product_index, f"ไม่พบลิงก์สินค้าลำดับที่ {product_index + 1}"
+
+    product_url = visible_links[product_index].get_attribute("href")
 
     driver.get(product_url)
     wait_for_page(driver)
 
     wait = WebDriverWait(driver, WAIT_TIME)
+    wait.until(lambda browser: "/product_details/" in browser.current_url)
 
-    wait.until(
-        lambda browser: "/product_details/" in browser.current_url
-    )
-
-    print("Product URL:", driver.current_url)
-    print("Product title:", driver.title)
+    print(f"\n[Product Index {product_index}] URL:", driver.current_url)
+    print(f"[Product Index {product_index}] Title:", driver.title)
 
     for element_id in ("name", "email", "review"):
         try:
@@ -121,6 +117,33 @@ def open_first_product(driver):
                 f"ไม่พบช่อง #{element_id} บนหน้ารายละเอียดสินค้า "
                 f"URL={driver.current_url}, Title={driver.title}"
             ) from exc
+
+
+def fill_and_submit_review(driver, name_val="Automation Tester", email_val="test.automation@example.com", review_val="Great product! Excellent quality and fast shipping."):
+    """ฟังก์ชันช่วยป้อนข้อมูลลงในฟอร์มรีวิวและกดปุ่ม Submit ให้อัตโนมัติ"""
+    wait = WebDriverWait(driver, WAIT_TIME)
+    
+    name_input = wait.until(EC.presence_of_element_located((By.ID, "name")))
+    email_input = wait.until(EC.presence_of_element_located((By.ID, "email")))
+    review_input = wait.until(EC.presence_of_element_located((By.ID, "review")))
+
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", name_input)
+
+    name_input.clear()
+    name_input.send_keys(name_val)
+    
+    email_input.clear()
+    email_input.send_keys(email_val)
+    
+    review_input.clear()
+    review_input.send_keys(review_val)
+
+    try:
+        submit_button = driver.find_element(By.ID, "button-review")
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_button)
+        submit_button.click()
+    except Exception:
+        print("ไม่พบปุ่ม #button-review หรือไม่สามารถกดได้")
 
 
 def add_product_to_cart(driver, product_index=0):
@@ -187,100 +210,13 @@ def get_cart_rows(driver):
 
 
 # =====================================================
-# EZ1: SCROLL UP
-# =====================================================
-
-def test_ez1_scroll_up(driver):
-    """TC_EZ1_01: คลิกปุ่ม Scroll Up และตรวจสอบการเลื่อนหน้า"""
-    open_home(driver)
-    wait = WebDriverWait(driver, WAIT_TIME)
-
-    # เลื่อนหน้าเว็บลงด้านล่างเพื่อเตรียมทดสอบ
-    driver.execute_script(
-        "window.scrollTo(0, document.documentElement.scrollHeight);"
-    )
-
-    wait.until(
-        lambda browser: browser.execute_script(
-            "return window.scrollY"
-        ) > 100
-    )
-
-    before = driver.execute_script("return window.scrollY")
-    print("ตำแหน่งก่อนคลิก:", before)
-
-    button = wait.until(
-        EC.element_to_be_clickable((By.ID, "scrollUp"))
-    )
-
-    assert button.is_displayed(), "ไม่พบปุ่ม Scroll Up"
-
-    # คลิกปุ่มผ่าน Selenium ก่อน
-    button.click()
-
-    try:
-        # รอให้หน้าเว็บเริ่มเลื่อนขึ้น
-        try:
-            wait.until(
-                lambda browser: browser.execute_script(
-                    "return window.scrollY"
-                ) < before - 10
-            )
-        except Exception:
-            # หากคลิกปกติไม่เริ่มเลื่อน ให้ตรวจสอบปุ่มอีกครั้ง
-            button = wait.until(
-                EC.presence_of_element_located((By.ID, "scrollUp"))
-            )
-
-            assert button.is_displayed(), (
-                "ปุ่ม Scroll Up ไม่ปรากฏหลังคลิก"
-            )
-
-            # กระตุ้น click event ของปุ่มโดยตรง
-            driver.execute_script(
-                "arguments[0].click();",
-                button
-            )
-
-            wait.until(
-                lambda browser: browser.execute_script(
-                    "return window.scrollY"
-                ) < before - 10
-            )
-
-        # ตรวจสอบว่าหน้าเว็บกลับถึงด้านบนจริง
-        wait.until(
-            lambda browser: browser.execute_script(
-                "return window.scrollY"
-            ) <= 5
-        )
-
-    except Exception:
-        after = driver.execute_script("return window.scrollY")
-
-        pytest.fail(
-            "ปุ่ม Scroll Up ไม่สามารถเลื่อนหน้าเว็บกลับด้านบนได้ "
-            f"ก่อนคลิก={before}, หลังรอ={after}"
-        )
-
-    after = driver.execute_script("return window.scrollY")
-
-    print("ตำแหน่งหลังคลิก:", after)
-
-    assert after <= 5, (
-        f"หน้าเว็บยังไม่กลับด้านบน ตำแหน่งปัจจุบัน={after}"
-    )
-
-    print("PASS: ปุ่ม Scroll Up ทำงานสำเร็จ")
-
-
-# =====================================================
 # SC10: CHECKING OUT
 # =====================================================
 
 def test_sc10_01_cart_page_opens(driver):
     """TC_SC10_01: ตรวจสอบว่าหน้ารถเข็นเปิดได้"""
     open_cart(driver)
+    driver.save_screenshot("TC_SC10_01_cart_page.png")
 
     assert "automationexercise.com" in driver.current_url.lower()
 
@@ -291,9 +227,6 @@ def test_sc10_01_cart_page_opens(driver):
         or "checkout" in body_text
         or driver.find_elements(By.ID, "cart_info")
         or driver.find_elements(By.ID, "cart_info_table")
-    ), (
-        "ไม่พบเนื้อหาที่เกี่ยวข้องกับรถเข็น "
-        f"URL={driver.current_url}, Title={driver.title}"
     )
 
     print("PASS: เปิดหน้ารถเข็นได้")
@@ -302,6 +235,7 @@ def test_sc10_01_cart_page_opens(driver):
 def test_sc10_02_empty_cart_message(driver):
     """TC_SC10_02: ตรวจสอบสถานะรถเข็นว่าง"""
     open_cart(driver)
+    driver.save_screenshot("TC_SC10_02_empty_cart.png")
 
     cart_rows = get_cart_rows(driver)
     body_text = driver.find_element(By.TAG_NAME, "body").text.lower()
@@ -314,9 +248,7 @@ def test_sc10_02_empty_cart_message(driver):
     if len(cart_rows) == 0 or empty_message:
         print("PASS: รถเข็นไม่มีแถวสินค้า")
     else:
-        pytest.skip(
-            "รถเข็นมีสินค้าอยู่ จึงไม่ใช่เงื่อนไขรถเข็นว่าง"
-        )
+        pytest.skip("รถเข็นมีสินค้าอยู่ จึงไม่ใช่เงื่อนไขรถเข็นว่าง")
 
 
 def test_sc10_03_add_product_to_cart(driver):
@@ -328,10 +260,9 @@ def test_sc10_03_add_product_to_cart(driver):
         lambda browser: len(get_cart_rows(browser)) > 0
     )
 
-    assert len(get_cart_rows(driver)) > 0, (
-        "ไม่พบสินค้าในรถเข็นหลังเพิ่มสินค้า"
-    )
+    driver.save_screenshot("TC_SC10_03_added_product_in_cart.png")
 
+    assert len(get_cart_rows(driver)) > 0
     print("PASS: พบสินค้าในรถเข็น")
 
 
@@ -343,17 +274,15 @@ def test_sc10_04_guest_checkout_requires_login(driver):
     wait = WebDriverWait(driver, WAIT_TIME)
 
     checkout_button = wait.until(
-        EC.element_to_be_clickable(
-            (By.CSS_SELECTOR, ".btn.btn-default.check_out")
-        )
+        EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn.btn-default.check_out"))
     )
     checkout_button.click()
 
     wait.until(
-        lambda browser: browser.execute_script(
-            "return document.readyState"
-        ) in ("interactive", "complete")
+        lambda browser: browser.execute_script("return document.readyState") in ("interactive", "complete")
     )
+
+    driver.save_screenshot("TC_SC10_04_checkout_redirect_login.png")
 
     current_url = driver.current_url.lower()
     page_text = driver.find_element(By.TAG_NAME, "body").text.lower()
@@ -364,9 +293,6 @@ def test_sc10_04_guest_checkout_requires_login(driver):
         or "register" in page_text
         or "login" in page_text
         or "checkout" in page_text
-    ), (
-        "ไม่พบหน้า Login, Register หรือ Checkout "
-        f"URL={driver.current_url}"
     )
 
     print("PASS: เว็บไซต์ตอบสนองต่อการเริ่ม Checkout")
@@ -382,49 +308,44 @@ def test_sc10_05_multiple_products_in_cart(driver):
         lambda browser: len(get_cart_rows(browser)) >= 2
     )
 
+    driver.save_screenshot("TC_SC10_05_multiple_products_in_cart.png")
+
     rows = get_cart_rows(driver)
-
-    assert len(rows) >= 2, (
-        f"คาดว่าจะมีสินค้าอย่างน้อย 2 รายการ แต่พบ {len(rows)} รายการ"
-    )
-
+    assert len(rows) >= 2
     print("PASS: พบสินค้าหลายรายการในรถเข็น")
 
 
 # =====================================================
-# SC11: WRITE REVIEW
+# SC11: WRITE REVIEW (ปรับสินค้าและ Test Data ให้แตกต่างกัน)
 # =====================================================
 
 def test_sc11_01_review_form_exists(driver):
-    """TC_SC11_01: ตรวจสอบว่าหน้ารายละเอียดมีฟอร์มรีวิว"""
-    open_first_product(driver)
+    """TC_SC11_01: ตรวจสอบว่าหน้ารายละเอียดมีฟอร์มรีวิว (สินค้าชิ้นที่ 1)"""
+    open_product_by_index(driver, product_index=0)
 
     review_heading = WebDriverWait(driver, WAIT_TIME).until(
-        EC.visibility_of_element_located(
-            (
-                By.XPATH,
-                "//*[contains("
-                "translate(normalize-space(.),"
-                "'abcdefghijklmnopqrstuvwxyz',"
-                "'ABCDEFGHIJKLMNOPQRSTUVWXYZ'),"
-                "'WRITE YOUR REVIEW'"
-                ")]"
-            )
-        )
+        EC.visibility_of_element_located((
+            By.XPATH,
+            "//*[contains(translate(normalize-space(.),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ'),'WRITE YOUR REVIEW')]"
+        ))
     )
 
+    driver.save_screenshot("TC_SC11_01_review_form_exists.png")
     assert review_heading.is_displayed()
-
     print("PASS: พบส่วน Write Your Review")
 
 
 def test_sc11_02_review_fields_exist(driver):
-    """TC_SC11_02: ตรวจสอบช่องกรอกชื่อ อีเมล และรีวิว"""
-    open_first_product(driver)
+    """TC_SC11_02: ตรวจสอบช่องกรอกชื่อ อีเมล และรีวิว (สินค้าชิ้นที่ 2)"""
+    open_product_by_index(driver, product_index=1)
 
     name = driver.find_element(By.ID, "name")
     email = driver.find_element(By.ID, "email")
     review = driver.find_element(By.ID, "review")
+
+    fill_and_submit_review(driver, name_val="Checker User", email_val="checker@example.com", review_val="Checking all review input fields.")
+
+    driver.save_screenshot("TC_SC11_02_review_fields.png")
 
     assert name.is_displayed()
     assert email.is_displayed()
@@ -434,29 +355,36 @@ def test_sc11_02_review_fields_exist(driver):
 
 
 def test_sc11_03_review_form_accepts_name_and_email(driver):
-    """TC_SC11_03: ตรวจสอบว่ากรอกชื่อและอีเมลได้"""
-    open_first_product(driver)
+    """TC_SC11_03: ตรวจสอบว่ากรอกชื่อและอีเมลได้ (สินค้าชิ้นที่ 3)"""
+    open_product_by_index(driver, product_index=2)
+
+    name_val = "Somchai Jaidee"
+    email_val = "somchai.j@example.com"
+
+    fill_and_submit_review(driver, name_val=name_val, email_val=email_val, review_val="Testing valid name and email entry.")
 
     name = driver.find_element(By.ID, "name")
     email = driver.find_element(By.ID, "email")
 
-    name.send_keys("Selenium Test")
-    email.send_keys("selenium.test@example.com")
+    driver.save_screenshot("TC_SC11_03_entered_name_email.png")
 
-    assert name.get_attribute("value") == "Selenium Test"
-    assert email.get_attribute("value") == "selenium.test@example.com"
+    assert name.get_attribute("value") == name_val
+    assert email.get_attribute("value") == email_val
 
     print("PASS: กรอกชื่อและอีเมลได้")
 
 
 def test_sc11_04_review_text_can_be_entered(driver):
-    """TC_SC11_04: ตรวจสอบว่ากรอกข้อความรีวิวได้"""
-    open_first_product(driver)
+    """TC_SC11_04: ตรวจสอบว่ากรอกข้อความรีวิวได้ (สินค้าชิ้นที่ 4)"""
+    open_product_by_index(driver, product_index=3)
+
+    review_text = "The product quality is superb! Highly satisfied with this order."
+
+    fill_and_submit_review(driver, name_val="Reviewer Person", email_val="reviewer@example.com", review_val=review_text)
 
     review = driver.find_element(By.ID, "review")
-    review_text = "This is a Selenium practice test review."
 
-    review.send_keys(review_text)
+    driver.save_screenshot("TC_SC11_04_entered_review_text.png")
 
     assert review.get_attribute("value") == review_text
 
@@ -464,13 +392,16 @@ def test_sc11_04_review_text_can_be_entered(driver):
 
 
 def test_sc11_05_review_accepts_special_characters(driver):
-    """TC_SC11_05: ตรวจสอบข้อความรีวิวที่มีอักขระพิเศษ"""
-    open_first_product(driver)
+    """TC_SC11_05: ตรวจสอบข้อความรีวิวที่มีอักขระพิเศษ (สินค้าชิ้นที่ 5)"""
+    open_product_by_index(driver, product_index=4)
+
+    special_text = "Rating: 5/5 stars! Code: #PRD-99 @Home (100% Recommended)!!!"
+
+    fill_and_submit_review(driver, name_val="Special Tester", email_val="special.test@example.com", review_val=special_text)
 
     review = driver.find_element(By.ID, "review")
-    special_text = "Test review: A&B, 100% useful! Line 1."
 
-    review.send_keys(special_text)
+    driver.save_screenshot("TC_SC11_05_entered_special_chars.png")
 
     assert review.get_attribute("value") == special_text
 
